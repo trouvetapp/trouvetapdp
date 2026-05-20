@@ -1,0 +1,132 @@
+import { useEffect, useState } from 'react'
+import { createClient } from '@supabase/supabase-js'
+import { useRouter } from 'next/router'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+)
+
+const ROLE_STAFF_ID = process.env.NEXT_PUBLIC_DISCORD_STAFF_ROLE_ID
+
+export default function Upload() {
+  const [user, setUser] = useState(null)
+  const [isStaff, setIsStaff] = useState(false)
+  const [image, setImage] = useState(null)
+  const [couleur, setCouleur] = useState('')
+  const [categorie, setCategorie] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [success, setSuccess] = useState(false)
+  const router = useRouter()
+
+  const couleurs = ['bleu','rose','rouge','vert','violet','jaune','orange','noir','blanc']
+  const categories = ['foot','jeux vidéo','basket','sport','animé','musique','nature','animal','pixel art','aesthetic','dark','voiture']
+
+  useEffect(() => {
+    checkUser()
+  }, [])
+
+  async function checkUser() {
+    const { data } = await supabase.auth.getSession()
+    if (!data.session) return router.push('/')
+    setUser(data.session.user)
+
+    const roles = data.session.user.user_metadata?.roles || []
+    if (roles.includes(ROLE_STAFF_ID)) {
+      setIsStaff(true)
+    } else {
+      router.push('/')
+    }
+  }
+
+  async function handleUpload() {
+    if (!image || !couleur || !categorie) return alert('Remplis tous les champs !')
+    setLoading(true)
+
+    const fileName = `${Date.now()}-${image.name}`
+    const { data: uploadData, error } = await supabase.storage
+      .from('pdp-images')
+      .upload(fileName, image)
+
+    if (error) { alert('Erreur upload image'); setLoading(false); return }
+
+    const { data: urlData } = supabase.storage
+      .from('pdp-images')
+      .getPublicUrl(fileName)
+
+    await supabase.from('pdp').insert({
+      image_url: urlData.publicUrl,
+      couleur,
+      categorie,
+      staff_id: user.id,
+      staff_pseudo: user.user_metadata.full_name,
+      staff_avatar: user.user_metadata.avatar_url,
+    })
+
+    setSuccess(true)
+    setLoading(false)
+    setImage(null)
+    setCouleur('')
+    setCategorie('')
+  }
+
+  if (!isStaff) return null
+
+  return (
+    <div style={{minHeight:'100vh',background:'#12112a',padding:'40px 32px',fontFamily:'Inter,sans-serif'}}>
+      <div style={{maxWidth:500,margin:'0 auto'}}>
+        <h1 style={{fontSize:24,fontWeight:700,color:'#fff',marginBottom:8}}>Ajouter une pdp</h1>
+        <p style={{color:'rgba(255,255,255,0.4)',fontSize:14,marginBottom:32}}>Connecté en tant que staff · {user?.user_metadata?.full_name}</p>
+
+        {success && (
+          <div style={{background:'rgba(34,197,94,0.15)',border:'0.5px solid #22c55e',borderRadius:10,padding:'12px 16px',marginBottom:20,color:'#86efac',fontSize:14}}>
+            ✅ Pdp ajoutée avec succès !
+          </div>
+        )}
+
+        <div style={{background:'#1a1930',borderRadius:12,padding:24,border:'0.5px solid rgba(255,255,255,0.08)',display:'flex',flexDirection:'column',gap:20}}>
+
+          <div>
+            <label style={{color:'rgba(255,255,255,0.6)',fontSize:13,marginBottom:8,display:'block'}}>Image</label>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={e => setImage(e.target.files[0])}
+              style={{color:'rgba(255,255,255,0.6)',fontSize:13,width:'100%'}}
+            />
+            {image && (
+              <img src={URL.createObjectURL(image)} style={{width:'100%',borderRadius:8,marginTop:12,aspectRatio:1,objectFit:'cover'}} />
+            )}
+          </div>
+
+          <div>
+            <label style={{color:'rgba(255,255,255,0.6)',fontSize:13,marginBottom:8,display:'block'}}>Couleur principale</label>
+            <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+              {couleurs.map(c => (
+                <span key={c} onClick={() => setCouleur(c)} style={{padding:'5px 14px',borderRadius:999,fontSize:12,fontWeight:500,cursor:'pointer',border:`0.5px solid ${couleur===c?'#6c5ce7':'rgba(255,255,255,0.1)'}`,color:couleur===c?'#fff':'rgba(255,255,255,0.5)',background:couleur===c?'#6c5ce7':'rgba(255,255,255,0.04)'}}>
+                  {c.charAt(0).toUpperCase() + c.slice(1)}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label style={{color:'rgba(255,255,255,0.6)',fontSize:13,marginBottom:8,display:'block'}}>Catégorie</label>
+            <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+              {categories.map(cat => (
+                <span key={cat} onClick={() => setCategorie(cat)} style={{padding:'5px 14px',borderRadius:999,fontSize:12,fontWeight:500,cursor:'pointer',border:`0.5px solid ${categorie===cat?'#6c5ce7':'rgba(255,255,255,0.1)'}`,color:categorie===cat?'#fff':'rgba(255,255,255,0.5)',background:categorie===cat?'#6c5ce7':'rgba(255,255,255,0.04)'}}>
+                  {cat.charAt(0).toUpperCase() + cat.slice(1)}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <button onClick={handleUpload} disabled={loading} style={{padding:'12px',borderRadius:10,background:'#6c5ce7',color:'#fff',fontSize:14,fontWeight:600,border:'none',opacity:loading?0.6:1}}>
+            {loading ? 'Envoi en cours...' : '✅ Ajouter la pdp'}
+          </button>
+
+        </div>
+      </div>
+    </div>
+  )
+}

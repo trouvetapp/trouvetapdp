@@ -1,0 +1,30 @@
+import { createClient } from '@supabase/supabase-js'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+)
+
+export default async function handler(req, res) {
+  const { data: pdps } = await supabase.from('pdp').select('telechargements, likes')
+
+  const totalPdps = pdps?.length || 0
+  const totalDownloads = pdps?.reduce((acc, p) => acc + p.telechargements, 0) || 0
+  const totalLikes = pdps?.reduce((acc, p) => acc + p.likes, 0) || 0
+
+  const { data: classement } = await supabase
+    .from('pdp')
+    .select('staff_pseudo, staff_avatar, staff_id')
+
+  const staffCount = {}
+  classement?.forEach(p => {
+    staffCount[p.staff_id] = staffCount[p.staff_id] || { pseudo: p.staff_pseudo, avatar: p.staff_avatar, count: 0 }
+    staffCount[p.staff_id].count++
+  })
+
+  const top = Object.values(staffCount)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10)
+
+  res.status(200).json({ totalPdps, totalDownloads, totalLikes, classement: top })
+}
